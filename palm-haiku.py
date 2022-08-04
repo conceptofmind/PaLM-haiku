@@ -183,10 +183,16 @@ class ParallelTransformer(hk.Module):
 class PaLM_base(hk.Module):
     def __init__(self, *, dim, num_tokens, depth, dim_head = 64, heads = 8, ff_mult = 4):
         super(PaLM_base, self).__init__()
+
         self.embed = nn.Embed(num_tokens, dim)
-        self.net = ParallelTransformerBlock(dim=dim, dim_head=dim_head, heads=heads, ff_mult=ff_mult)
+        self.net = ParallelTransformer(dim=dim, depth=depth, dim_head=dim_head, heads=heads, ff_mult=ff_mult)
         self.layer_norm = LayerNorm(dim)
         self.linear = hk.Linear(dim, num_tokens, bias=False)
 
+    def __call__(self, x):
+        embedding = self.embed(x)
+        x = self.net(embedding)
+        x = self.layer_norm(x)
+        out = jnp.dot(x, jnp.transpose(embedding))
+        return out
 
-    return net

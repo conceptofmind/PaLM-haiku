@@ -13,7 +13,6 @@ Implementation of the Transformer architecture from <a href="https://ai.googlebl
 The model does not require `vmap` to train.
 
 ```python
-
 ```
 
 ## TODO:

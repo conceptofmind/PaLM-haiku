@@ -88,12 +88,12 @@ class ParallelTransformerBlock(hk.Module):
         self.scale = dim_head**-0.5
         self.rotary_emb = RotaryEmbedding(dim_head)
 
-        self.fused_attn_ff_proj = hk.Linear(sum(self.fused_dims), bias=False)
-        self.attn_out = hk.Linear(dim, bias=False)
+        self.fused_attn_ff_proj = hk.Linear(sum(self.fused_dims), with_bias=False)
+        self.attn_out = hk.Linear(dim, with_bias=False)
 
         self.ff_out = hk.Sequential(
             SwiGLU(),
-            hk.Linear(dim, bias=False)
+            hk.Linear(dim, with_bias=False)
         )
 
     def __call__(self, x):
@@ -168,6 +168,7 @@ class ParallelTransformer(hk.Module):
         super(ParallelTransformer, self).__init__()
 
         self.layers = []
+        
         for _ in range(depth):
             self.layers.append(
                 PreNorm(ParallelTransformerBlock(dim, dim_head, heads, ff_mult))
@@ -184,10 +185,9 @@ class PaLM_base(hk.Module):
     def __init__(self, *, dim, num_tokens, depth, dim_head = 64, heads = 8, ff_mult = 4):
         super(PaLM_base, self).__init__()
 
-        self.embed = nn.Embed(num_tokens, dim)
+        self.embed = hk.Embed(num_tokens, dim)
         self.net = ParallelTransformer(dim=dim, depth=depth, dim_head=dim_head, heads=heads, ff_mult=ff_mult)
         self.layer_norm = LayerNorm(dim)
-        self.linear = hk.Linear(dim, num_tokens, bias=False)
 
     def __call__(self, x):
         embedding = self.embed(x)
@@ -196,3 +196,26 @@ class PaLM_base(hk.Module):
         out = jnp.dot(x, jnp.transpose(embedding))
         return out
 
+def PaLM(**kwargs):
+    @hk.transform
+    def inner(text):
+        return PaLM_base(**kwargs)(text)
+    return inner
+
+if __name__ == "__main__":
+
+    model = PaLM(
+        num_tokens = 20000,
+        dim = 512,
+        depth = 1,
+        heads = 8,
+        dim_head = 64
+    )
+
+    key = PRNGSequence(42)
+
+    text = jax.random.randint(next(key), (1, 2048), 0, 20000)
+
+    params = model.init(next(key), text)
+    logits = model.apply(params, next(text), text)
+    print(logits.shape)
